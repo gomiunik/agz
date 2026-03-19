@@ -63,7 +63,7 @@ ask() {
 # ---------------------------------------------------------------------------
 echo
 echo -e "${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${RESET}"
-echo -e "${CYAN}${BOLD}║        AIR-GAPPED ZFS BACKUP SOLUTION — INSTALLER           ║${RESET}"
+echo -e "${CYAN}${BOLD}║        AIR-GAPPED ZFS BACKUP SOLUTION — INSTALLER            ║${RESET}"
 echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${RESET}"
 echo
 echo -e "${BOLD}Before continuing, verify the following prerequisites:${RESET}"
@@ -81,7 +81,7 @@ ask "" ""
 # Step 1 — Package installation
 # =============================================================================
 echo
-info "Step 1/10 — Installing required packages"
+info "Step 1/11 — Installing required packages"
 
 if command -v apt-get &>/dev/null; then
     PKG_MGR="apt"
@@ -110,7 +110,7 @@ fi
 # Step 2 — SSH key generation
 # =============================================================================
 echo
-info "Step 2/10 — SSH key setup"
+info "Step 2/11 — SSH key setup"
 
 SSH_KEY="/root/.ssh/agz_backup_ed25519"
 mkdir -p /root/.ssh
@@ -151,7 +151,7 @@ reply=$(ask "Press Enter once you have configured the remote servers (or skip wi
 # Step 3 — Download scripts from GitHub
 # =============================================================================
 echo
-info "Step 3/10 — Downloading scripts from GitHub"
+info "Step 3/11 — Downloading scripts from GitHub"
 
 mkdir -p /usr/local/bin /usr/local/etc
 
@@ -193,7 +193,7 @@ done
 # Step 4 — Set permissions
 # =============================================================================
 echo
-info "Step 4/10 — Setting permissions"
+info "Step 4/11 — Setting permissions"
 
 chmod 755 \
     /usr/local/bin/app-backup.sh \
@@ -213,7 +213,7 @@ info "Permissions set."
 # Step 5 — Deploy example apps (optional)
 # =============================================================================
 echo
-reply=$(ask "Step 5/10 — Deploy example app configurations? (bookstack) [y/N]: " "N")
+reply=$(ask "Step 5/11 — Deploy example app configurations? (bookstack) [y/N]: " "N")
 
 if [[ "$reply" =~ ^[Yy]$ ]]; then
     EXAMPLE_APPS=("bookstack")
@@ -250,7 +250,7 @@ fi
 # Step 6 — Crontab setup (optional)
 # =============================================================================
 echo
-reply=$(ask "Step 6/10 — Set up recommended crontab entries? [y/N]: " "N")
+reply=$(ask "Step 6/11 — Set up recommended crontab entries? [y/N]: " "N")
 
 if [[ "$reply" =~ ^[Yy]$ ]]; then
     CRON_ENTRIES=(
@@ -275,7 +275,7 @@ fi
 # Step 7 — Sudoers entry
 # =============================================================================
 echo
-info "Step 7/10 — Writing sudoers entry"
+info "Step 7/11 — Writing sudoers entry"
 
 IP_BIN=$(command -v ip 2>/dev/null || echo "/sbin/ip")
 ZFS_BIN=$(command -v zfs 2>/dev/null || echo "/sbin/zfs")
@@ -306,7 +306,7 @@ rm -f "$SUDOERS_TMP" 2>/dev/null || true
 # Step 8 — Nginx setup
 # =============================================================================
 echo
-info "Step 8/10 — Configuring nginx"
+info "Step 8/11 — Configuring nginx"
 
 systemctl enable nginx && systemctl start nginx || warn "Failed to enable/start nginx — check systemd."
 
@@ -346,7 +346,7 @@ fi
 # Step 9 — SSH login MOTD
 # =============================================================================
 echo
-info "Step 9/10 — Writing login MOTD"
+info "Step 9/11 — Writing login MOTD"
 
 # Derive GitHub path from REPO URL (strip raw prefix)
 # e.g. https://raw.githubusercontent.com/USER/REPO/main → USER/REPO
@@ -354,7 +354,7 @@ GITHUB_PATH=$(echo "$REPO" | sed 's|https://raw.githubusercontent.com/||; s|/mai
 
 MOTD_CONTENT="
 ╔══════════════════════════════════════════════════════════════╗
-║            AIR-GAPPED ZFS BACKUP SERVER                     ║
+║            AIR-GAPPED ZFS BACKUP SERVER                      ║
 ╚══════════════════════════════════════════════════════════════╝
 
   Automated rsync + ZFS snapshot backup solution.
@@ -367,9 +367,9 @@ MOTD_CONTENT="
     Logs:      /var/log/backup.log
 
   Quick commands:
-    sudo /usr/local/bin/app-backup.sh          # run all apps
+    sudo /usr/local/bin/app-backup.sh           # run all apps
     sudo /usr/local/bin/app-backup.sh bookstack # run one app
-    sudo /usr/local/bin/pool-report.sh         # ZFS health report
+    sudo /usr/local/bin/pool-report.sh          # ZFS health report
 
   Read more: https://github.com/${GITHUB_PATH}#readme
 "
@@ -388,14 +388,46 @@ else
 fi
 
 # =============================================================================
-# Step 10 — Summary / next steps
+# Step 10 — Home directory shortcut to backup-apps (optional)
+# =============================================================================
+echo
+reply=$(ask "Step 10/11 — Create a shortcut (symlink) to /usr/local/etc/backup-apps in your home directory? [y/N]: " "N")
+
+if [[ "$reply" =~ ^[Yy]$ ]]; then
+    # Determine the real home directory even when run via sudo
+    TARGET_HOME="${SUDO_HOME:-${HOME}}"
+    # SUDO_USER is set when invoked via sudo; use it to find the real home
+    if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+        TARGET_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    fi
+
+    LINK_PATH="${TARGET_HOME}/backup-apps"
+
+    if [ -L "$LINK_PATH" ]; then
+        info "Symlink already exists at $LINK_PATH — skipping."
+    elif [ -e "$LINK_PATH" ]; then
+        warn "$LINK_PATH already exists and is not a symlink — skipping."
+    else
+        ln -s /usr/local/etc/backup-apps "$LINK_PATH"
+        # Ensure the symlink is owned by the real user, not root
+        if [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != "root" ]; then
+            chown -h "$SUDO_USER:" "$LINK_PATH"
+        fi
+        info "Symlink created: $LINK_PATH -> /usr/local/etc/backup-apps"
+    fi
+else
+    info "Skipping home directory shortcut."
+fi
+
+# =============================================================================
+# Step 11 — Summary / next steps
 # =============================================================================
 echo
 echo -e "${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗${RESET}"
-echo -e "${CYAN}${BOLD}║                  INSTALLATION COMPLETE                     ║${RESET}"
+echo -e "${CYAN}${BOLD}║                  INSTALLATION COMPLETE                       ║${RESET}"
 echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${RESET}"
 echo
-echo -e "${BOLD}Step 10/10 — Next steps checklist:${RESET}"
+echo -e "${BOLD}Step 11/11 — Next steps checklist:${RESET}"
 echo
 echo "  1. Edit secrets file:"
 echo -e "       ${CYAN}nano /usr/local/etc/backup-secrets.env${RESET}"
